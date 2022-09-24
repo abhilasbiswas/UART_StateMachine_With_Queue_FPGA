@@ -36,39 +36,39 @@ entity FIFO_TB is
 end FIFO_TB;
 
 architecture Behavioral of FIFO_TB is
-COMPONENT fifo_generator_0
-  PORT (
-    clk : IN STD_LOGIC;
-    srst : IN STD_LOGIC;
-    din : IN STD_LOGIC_VECTOR(7 DOWNTO 0);
-    wr_en : IN STD_LOGIC;
-    rd_en : IN STD_LOGIC;
-    dout : OUT STD_LOGIC_VECTOR(7 DOWNTO 0);
-    full : OUT STD_LOGIC;
-    empty : OUT STD_LOGIC
-  );
-END COMPONENT;
+COMPONENT FIFO
+    PORT (
+        wr_clk : IN STD_LOGIC;
+        rd_clk : IN STD_LOGIC;
+        din : IN STD_LOGIC_VECTOR(7 DOWNTO 0);
+        wr_en : IN STD_LOGIC;
+        rd_en : IN STD_LOGIC;
+        dout : OUT STD_LOGIC_VECTOR(7 DOWNTO 0);
+        full : OUT STD_LOGIC;
+        empty : OUT STD_LOGIC
+      );
+    END COMPONENT;
 
 
 signal data_write : std_logic_vector(7 downto 0) := x"00";
 signal data_read  : std_logic_vector(7 downto 0) := x"00";
-signal clk,rd_en : std_logic := '0';
+signal clk,rd_en ,emt: std_logic := '0';
 signal i : integer := 0;
 
 
 
 begin
 
-    fifo : fifo_generator_0
+    buf : FIFO
     PORT map (
-      clk => clk,
-      srst => '0',
+      wr_clk => clk,
+      rd_clk => clk,
       din => data_write,
       wr_en => '1',
       rd_en => rd_en,
       dout => data_read,
       full => open,
-      empty => open
+      empty => emt
     );
     clk <= not clk after 10 ns;
     
@@ -77,8 +77,11 @@ begin
         if rising_edge(clk) then
             i <= i + 1;
             data_write <= data_write + 1;
-            if (i >= 100) then
+            
+            if (emt = '0' and i<8) then
                 rd_en <= '1';
+            else
+                rd_en <= '0';
             end if;
         end if;
     end process ; -- main

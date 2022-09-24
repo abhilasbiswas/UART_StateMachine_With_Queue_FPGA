@@ -55,13 +55,14 @@
 
 //----------- Begin Cut here for INSTANTIATION Template ---// INST_TAG
 FIFO your_instance_name (
-  .clk(clk),      // input wire clk
-  .din(din),      // input wire [7 : 0] din
-  .wr_en(wr_en),  // input wire wr_en
-  .rd_en(rd_en),  // input wire rd_en
-  .dout(dout),    // output wire [7 : 0] dout
-  .full(full),    // output wire full
-  .empty(empty)  // output wire empty
+  .wr_clk(wr_clk),  // input wire wr_clk
+  .rd_clk(rd_clk),  // input wire rd_clk
+  .din(din),        // input wire [7 : 0] din
+  .wr_en(wr_en),    // input wire wr_en
+  .rd_en(rd_en),    // input wire rd_en
+  .dout(dout),      // output wire [7 : 0] dout
+  .full(full),      // output wire full
+  .empty(empty)    // output wire empty
 );
 // INST_TAG_END ------ End INSTANTIATION Template ---------
 

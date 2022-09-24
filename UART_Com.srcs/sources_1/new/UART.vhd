@@ -37,37 +37,44 @@ entity UART is
            baud_rate   : real := 115200.0
     );
     Port ( clk : in STD_LOGIC; -- 100MHz
-           clk_out : out std_logic;
            rx : in STD_LOGIC;
            tx : out STD_LOGIC;
-           rx_trig : out std_logic;
-           tx_trig : in std_logic;
-           tx_ack : out std_logic; -- acknowledgement
+           
+           rx_rd_clk : in std_logic; -- acknowledgement
+           tx_wr_clk : in std_logic;
+           rd_en     : in std_logic;
+           wr_en     : in std_logic;
+           rx_emt : out std_logic;
+           tx_emt : out std_logic;
+
            data_rx: out std_logic_vector(7 downto 0);
-           data_tx: in  std_logic_vector(7 downto 0));
+           data_tx: in  std_logic_vector(7 downto 0);
+          data_wr: out  std_logic_vector(7 downto 0));
 end UART;
 
 architecture Behavioral of UART is
     COMPONENT FIFO
     PORT (
-        clk : IN STD_LOGIC;
+        wr_clk : IN STD_LOGIC;
+        rd_clk : IN STD_LOGIC;
         din : IN STD_LOGIC_VECTOR(7 DOWNTO 0);
         wr_en : IN STD_LOGIC;
         rd_en : IN STD_LOGIC;
         dout : OUT STD_LOGIC_VECTOR(7 DOWNTO 0);
         full : OUT STD_LOGIC;
         empty : OUT STD_LOGIC
-    );
+      );
     END COMPONENT;
 
-    type states is (state_idle, state_start, state_data, state_parity);
+    type states is (state_idle, state_start, state_data, state_parity,state_fetch,state_delay,state_delay2,state_delay3);
     signal rx_state : states := state_idle;
     signal tx_state : states := state_idle;
    
     signal rx_prev, rx_trig_buffer, tx_trig_buffer, tx_trig_prev, tx_ack_buf: std_logic := '0';
     signal tx_buffer: std_logic := '1';
     signal index_rx, index_tx : integer := 0;
-    signal data_rx_buffer : std_logic_vector(7 downto 0) := (others => '0');
+    signal data_rx_buffer, data_tx_buffer : std_logic_vector(7 downto 0) := (others => '0');
+    signal data_rx_temp, data_tx_temp : std_logic_vector(7 downto 0) := (others => '0');
 
     signal accum_rx : unsigned (counter_bit-1 downto 0) := (others => '0');
     signal accum_tx : unsigned (counter_bit-1 downto 0) := (others => '0');
@@ -78,37 +85,42 @@ architecture Behavioral of UART is
     signal rx_clk   : std_logic := accum_rx(counter_bit-1);
     signal tx_clk   : std_logic := accum_tx(counter_bit-1);
 
-    
+    signal tx_wr_en, tx_rd_en, rx_wr_en, rx_rd_en : std_logic := '0';
+    signal tx_empty, rx_empty : std_logic := '0';
 
 begin
 
     transmit_buffer : FIFO
     PORT MAP (
-        clk => clk,
-        din => din,
-        wr_en => wr_en,
-        rd_en => rd_en,
-        dout => dout,
-        full => full,
-        empty => empty
+        wr_clk => tx_wr_clk,
+        rd_clk => tx_clk,
+        din => data_tx,
+        wr_en => tx_wr_en,
+        rd_en => tx_rd_en,
+        dout => data_tx_buffer,
+        full => open,
+        empty => tx_empty
     );
     received_buffer : FIFO
     PORT MAP (
-        clk => clk,
-        din => din,
-        wr_en => wr_en,
-        rd_en => rd_en,
-        dout => dout,
-        full => full,
-        empty => empty
+        wr_clk => rx_clk,
+        rd_clk => rx_rd_clk,
+        din => data_rx_buffer,
+        wr_en => rx_wr_en,
+        rd_en => rx_rd_en,
+        dout => data_rx,
+        full => open,
+        empty => rx_empty
     );
 
-    rx_trig <= rx_trig_buffer;
     tx <= tx_buffer;
-    tx_ack <= tx_ack_buf;
     
-    clk_out <= rx_clk;
+    rx_emt <= rx_empty;
+    tx_emt <= tx_empty;
     
+    tx_wr_en <= wr_en;
+    rx_rd_en <= rd_en;
+    data_wr <= data_tx_buffer;
     process (clk)
     begin
         if (rising_edge(clk)) then
@@ -122,11 +134,6 @@ begin
         end if;
     end process;
 
-    fetch : process( clk )
-    begin
-        
-        
-    end process ; -- fetch
 
     process (rx_clk)
     begin
@@ -135,18 +142,19 @@ begin
                 when state_idle =>
                     if (rx='0') then
                         rx_state <= state_data;
-                        data_rx_buffer <= (others => '0');
+                        data_rx_temp <= (others => '0');
                         index_rx <= 0;
                     end if;
                 when state_data =>
                     if (index_rx = 7) then
+                        data_rx_buffer <= rx&data_rx_temp(7 downto 1);
+                        rx_wr_en <= '1';
                         rx_state <= state_parity;
-                        data_rx <= rx&data_rx_buffer(7 downto 1);
-                        rx_trig_buffer <= not rx_trig_buffer;
                     end if;
-                    data_rx_buffer <= rx&data_rx_buffer(7 downto 1);
+                    data_rx_temp <= rx&data_rx_temp(7 downto 1);
                     index_rx <= index_rx + 1;
                 when state_parity =>
+                    rx_wr_en <= '0';
                     rx_state <= state_idle;
                 when others =>
                     rx_state <= state_idle;
@@ -157,21 +165,24 @@ begin
     process (tx_clk)
     begin
         if (rising_edge(tx_clk)) then
-            tx_trig_prev <= tx_trig;
-
             case tx_state is
                 when state_idle =>
-
-                    if (tx_trig_prev /= tx_trig) then
-                        tx_buffer <= '0';
-                        index_tx  <= 0;
-                        tx_state  <= state_data;
-                    else
-                        tx_buffer <= '1';
+                    tx_buffer <= '1';
+                    if (tx_empty = '0') then
+                        index_tx <= 0;
+                        tx_rd_en <= '1';
+                        tx_state  <= state_start;   
                     end if;
+                when state_start =>
+                        tx_rd_en <= '0';
+                        tx_state  <= state_delay;
+                when state_delay =>
+                        data_tx_temp <= data_tx_buffer;
+                        tx_state  <= state_data;
+                        tx_buffer <= '0';
                 when state_data =>
                         if (index_tx < data_tx'length) then
-                            tx_buffer <= data_tx(index_tx);
+                            tx_buffer <= data_tx_temp(index_tx);
                             index_tx <= index_tx + 1;
                         else
                             tx_buffer <= '1'; -- stop bit
@@ -179,7 +190,6 @@ begin
                         end if;
                 when state_parity =>
                             tx_buffer <= '1';
-                            tx_ack_buf <= not tx_ack_buf;
                             tx_state <= state_idle;
                 when others =>
                         tx_state <= state_idle;

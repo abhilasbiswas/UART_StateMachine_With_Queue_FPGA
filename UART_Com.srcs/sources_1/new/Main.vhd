@@ -70,21 +70,25 @@ ARCHITECTURE Behavioral OF Main IS
                counter_bit : integer := 32;
                baud_rate   : real := 8000000.0
         );
-        Port ( clk    : in STD_LOGIC; -- 100MHz
-               clk_out: out std_logic;
-               rx     : in STD_LOGIC;
-               tx     : out STD_LOGIC;
-               rx_trig: out std_logic;
+        Port ( clk : in STD_LOGIC; -- 100MHz
+               rx : in STD_LOGIC;
+               tx : out STD_LOGIC;
+               
+               rx_rd_clk : in std_logic; -- acknowledgement
+               tx_wr_clk : in std_logic;
+               rd_en     : in std_logic;
+               wr_en     : in std_logic;
+               rx_emt : out std_logic;
+               tx_emt : out std_logic;
     
-               tx_trig: in std_logic;
-               tx_ack : out std_logic;
                data_rx: out std_logic_vector(7 downto 0);
-               data_tx: in  std_logic_vector(7 downto 0));
+               data_tx: in  std_logic_vector(7 downto 0);
+               data_wr: out  std_logic_vector(7 downto 0));
     end component;
-    
+
     signal data_rx : std_logic_vector(7 downto 0) := x"00";
-    signal data_tx : std_logic_vector(7 downto 0) := (others=>'0');
-    signal rx_trig, tx_trig, tx_ack , clk_out: std_logic := '0';
+    signal data_tx, data_wr : std_logic_vector(7 downto 0) := (others=>'0');
+    signal rx_emt, tx_emt, rd_en , wr_en: std_logic := '0';
     
     -- signal counter : std_logic_vector (2 downto 0) := "000";
     SIGNAL clk100, rx_buffer, tx_buffer : STD_LOGIC := '0';
@@ -97,11 +101,10 @@ ARCHITECTURE Behavioral OF Main IS
         
     signal rd_trig_prev : std_logic := '0';
     
-    type states is (receive,send,delay);
+    type states is (poll, receive, send, delay, fetch, send2);
     
     signal state : states := receive;
     signal counter : std_logic_vector(23 downto 0) := (others => '0');
-    
     
 BEGIN
     -- rx_buffer <= rx;
@@ -109,34 +112,56 @@ BEGIN
 --    tx_trig <= tx_trig_probe(0);
     tx_probe(0) <= tx_buffer;
     rx_probe(0) <= rx;
-    clk_probe(0) <= tx_trig;
+    clk_probe(0) <= tx_emt;
     
     clk : PLL PORT MAP(clk100,sysclk);
-    ila : ila_0 PORT MAP(clk100,tx_probe,rx_probe,data_rx,clk_probe);
+    ila : ila_0 PORT MAP(clk100,tx_probe,rx_probe,data_wr,clk_probe);
 --    vio : vio_0 PORT MAP (clk100,data_rx,tx_trig_probe,data_tx);
     
 
     uart_module: UART port map ( 
                clk => clk100, -- 100MHz
-               clk_out => clk_out,
                rx => rx,
                tx => tx_buffer,
-               rx_trig => rx_trig,
-               tx_trig => tx_trig,
-               tx_ack => tx_ack,
+               
+               rx_rd_clk => sysclk,
+               tx_wr_clk => sysclk,
+               rd_en   => rd_en,
+               wr_en   => wr_en,
+               rx_emt => rx_emt,
+               tx_emt => tx_emt,
+    
                data_rx => data_rx,
-               data_tx => data_tx);
+               data_tx => data_tx,
+               data_wr => data_wr);
 
 
         process (sysclk)
         begin
             if (rising_edge(sysclk)) then
-                rd_trig_prev <= rx_trig;
-                
-                    if (rd_trig_prev /= rx_trig) then
+                case state is
+                    when poll =>
+                        if (rx_emt = '0') then
+                            rd_en <= '1';
+                            state <= receive;
+                        end if;
+                    when receive =>
+                        rd_en <= '0';
+                        state <= delay;
+                    when delay =>
+                        state <= fetch;
+                    when fetch =>
+                        wr_en <= '1';
                         data_tx <= data_rx;
-                        tx_trig <= not tx_trig;
-                     end if;
+                        state <= send;
+                    when send =>
+                        wr_en <= '0';
+                        state <= send2;
+                    when send2 =>
+                        
+                        state <= poll;
+                    when others =>
+                end case;
                 
             end if;
         end process;
