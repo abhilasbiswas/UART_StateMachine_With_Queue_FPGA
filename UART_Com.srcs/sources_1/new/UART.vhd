@@ -1,6 +1,6 @@
 ----------------------------------------------------------------------------------
 -- Company: 
--- Engineer: 
+-- Engineer: Abhilas Biswas
 -- 
 -- Create Date: 23.09.2022 21:48:32
 -- Design Name: 
@@ -48,8 +48,7 @@ entity UART is
            tx_emt : out std_logic;
 
            data_rx: out std_logic_vector(7 downto 0);
-           data_tx: in  std_logic_vector(7 downto 0);
-          data_wr: out  std_logic_vector(7 downto 0));
+           data_tx: in  std_logic_vector(7 downto 0));
 end UART;
 
 architecture Behavioral of UART is
@@ -120,7 +119,6 @@ begin
     
     tx_wr_en <= wr_en;
     rx_rd_en <= rd_en;
-    data_wr <= data_tx_buffer;
     process (clk)
     begin
         if (rising_edge(clk)) then
