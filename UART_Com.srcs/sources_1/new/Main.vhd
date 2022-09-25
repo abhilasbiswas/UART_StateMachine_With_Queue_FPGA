@@ -6,7 +6,7 @@
 -- Design Name: 
 -- Module Name: Main - Behavioral
 -- Project Name: 
--- Target Devices: 
+-- Target Devices: cmod A7 35T, One USB-UART bridge should be within the board, can be used to any project just by configuring the tx and rx pin.
 -- Tool Versions: 
 -- Description: 
 -- 
@@ -20,14 +20,8 @@
 LIBRARY IEEE;
 USE IEEE.STD_LOGIC_1164.ALL;
 use IEEE.std_logic_unsigned.all;
--- Uncomment the following library declaration if using
--- arithmetic functions with Signed or Unsigned values
 use IEEE.NUMERIC_STD.ALL;
 
--- Uncomment the following library declaration if instantiating
--- any Xilinx leaf cells in this code.
---library UNISIM;
---use UNISIM.VComponents.all;
 
 ENTITY Main IS
     PORT (
@@ -38,17 +32,7 @@ ENTITY Main IS
 END Main;
 
 ARCHITECTURE Behavioral OF Main IS
-    COMPONENT ila_0
-
-        PORT (
-            clk : IN STD_LOGIC;
-            
-            probe0 : IN STD_LOGIC_VECTOR(0 DOWNTO 0);
-            probe1 : IN STD_LOGIC_VECTOR(0 DOWNTO 0);
-            probe2 : IN STD_LOGIC_VECTOR(7 DOWNTO 0);
-            probe3 : IN STD_LOGIC_VECTOR(0 DOWNTO 0)
-        );
-    END COMPONENT;
+    
     COMPONENT PLL
         PORT (
             clk_out1 : OUT STD_LOGIC;
@@ -56,16 +40,8 @@ ARCHITECTURE Behavioral OF Main IS
         );
     END COMPONENT;
     
-    COMPONENT vio_0
-      PORT (
-        clk : IN STD_LOGIC;
-        probe_in0 : IN STD_LOGIC_VECTOR(7 DOWNTO 0);
-        probe_out0 : OUT STD_LOGIC_VECTOR(0 DOWNTO 0);
-        probe_out1 : OUT STD_LOGIC_VECTOR(7 DOWNTO 0)
-      );
-    END COMPONENT;
-
     component UART is
+        -- I tried upto 8Mbits baud rate
         generic(
                counter_bit : integer := 32;
                baud_rate   : real := 8000000.0
@@ -89,33 +65,22 @@ ARCHITECTURE Behavioral OF Main IS
     signal data_tx, data_wr : std_logic_vector(7 downto 0) := (others=>'0');
     signal rx_emt, tx_emt, rd_en , wr_en: std_logic := '0';
     
-    SIGNAL clk100, rx_buffer, tx_buffer : STD_LOGIC := '0';
-    SIGNAL tx_probe, rx_probe, tx_trig_probe, clk_probe : STD_LOGIC_VECTOR(0 DOWNTO 0) := (others => '0');
-        
-    signal rd_trig_prev : std_logic := '0';
+    SIGNAL clk100 : STD_LOGIC := '0';
     
-    type states is (poll, receive, send, delay, fetch, send2);
+    type states is (poll, receive, send, delay, fetch, done);
     
     signal state : states := receive;
     signal counter : std_logic_vector(23 downto 0) := (others => '0');
     
 BEGIN
-    -- rx_buffer <= rx;
-    tx <= tx_buffer;
---    tx_trig <= tx_trig_probe(0);
-    tx_probe(0) <= tx_buffer;
-    rx_probe(0) <= rx;
-    clk_probe(0) <= tx_emt;
-    
+    -- UART Module need 100 MHz base clock for baud rate generation
     clk : PLL PORT MAP(clk100,sysclk);
-    ila : ila_0 PORT MAP(clk100,tx_probe,rx_probe,data_rx,clk_probe);
---    vio : vio_0 PORT MAP (clk100,data_rx,tx_trig_probe,data_tx);
     
 
-    uart_module: UART port map ( 
+    uut: UART port map ( 
                clk => clk100, -- 100MHz
                rx => rx,
-               tx => tx_buffer,
+               tx => tx,
                
                rx_rd_clk => sysclk,
                tx_wr_clk => sysclk,
@@ -148,8 +113,8 @@ BEGIN
                         state <= send;
                     when send =>
                         wr_en <= '0';
-                        state <= send2;
-                    when send2 =>
+                        state <= done;
+                    when done =>
                         state <= poll;
                     when others =>
                 end case;

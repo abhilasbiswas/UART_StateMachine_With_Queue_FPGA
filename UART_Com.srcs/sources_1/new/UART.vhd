@@ -6,7 +6,7 @@
 -- Design Name: 
 -- Module Name: UART - Behavioral
 -- Project Name: 
--- Target Devices: 
+-- Target Devices: cmod A7 35T, Can be used as general component
 -- Tool Versions: 
 -- Description: 
 -- 
@@ -22,16 +22,10 @@
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.std_logic_unsigned.all;
--- Uncomment the following library declaration if using
--- arithmetic functions with Signed or Unsigned values
 use IEEE.NUMERIC_STD.ALL;
 
--- Uncomment the following library declaration if instantiating
--- any Xilinx leaf cells in this code.
---library UNISIM;
---use UNISIM.VComponents.all;
-
 entity UART is
+    -- For setting the baud rate
     generic(
            counter_bit : integer := 32;
            baud_rate   : real := 115200.0
@@ -52,6 +46,7 @@ entity UART is
 end UART;
 
 architecture Behavioral of UART is
+    -- Input and Output Queue, This is an IP provided by Vivado
     COMPONENT FIFO
     PORT (
         wr_clk : IN STD_LOGIC;
@@ -64,12 +59,13 @@ architecture Behavioral of UART is
         empty : OUT STD_LOGIC
       );
     END COMPONENT;
-
-    type states is (state_idle, state_start, state_data, state_parity,state_fetch,state_delay,state_delay2,state_delay3);
+    
+    -- Different states of Transfer and Receiver state machine
+    type states is (state_idle, state_start, state_data, state_parity,state_fetch,state_delay);
     signal rx_state : states := state_idle;
     signal tx_state : states := state_idle;
    
-    signal rx_prev, rx_trig_buffer, tx_trig_buffer, tx_trig_prev, tx_ack_buf: std_logic := '0';
+    signal rx_prev: std_logic := '0';
     signal tx_buffer: std_logic := '1';
     signal index_rx, index_tx : integer := 0;
     signal data_rx_buffer, data_tx_buffer : std_logic_vector(7 downto 0) := (others => '0');
@@ -77,7 +73,7 @@ architecture Behavioral of UART is
 
     signal accum_rx : unsigned (counter_bit-1 downto 0) := (others => '0');
     signal accum_tx : unsigned (counter_bit-1 downto 0) := (others => '0');
-    
+    -- Baudrate clock genration
     constant DDSMF  :     real    := 0.5 + baud_rate*(2.0**counter_bit)/100000000.0;
 
     signal step     : unsigned (counter_bit-1 downto 0) := to_unsigned(integer(DDSMF),counter_bit);
@@ -88,7 +84,7 @@ architecture Behavioral of UART is
     signal tx_empty, rx_empty : std_logic := '0';
 
 begin
-
+    -- Transmitter Queue
     transmit_buffer : FIFO
     PORT MAP (
         wr_clk => tx_wr_clk,
@@ -100,6 +96,7 @@ begin
         full => open,
         empty => tx_empty
     );
+    -- Receiver Queue
     received_buffer : FIFO
     PORT MAP (
         wr_clk => rx_clk,
@@ -119,6 +116,8 @@ begin
     
     tx_wr_en <= wr_en;
     rx_rd_en <= rd_en;
+    
+    -- Baud rate and synchronised rx clock generator
     process (clk)
     begin
         if (rising_edge(clk)) then
@@ -132,7 +131,7 @@ begin
         end if;
     end process;
 
-
+    -- Receiver State machine
     process (rx_clk)
     begin
         if (rising_edge(rx_clk)) then
@@ -159,7 +158,8 @@ begin
             end case;
         end if;
     end process;
-        
+    
+    -- Transmitter State Machine
     process (tx_clk)
     begin
         if (rising_edge(tx_clk)) then
