@@ -1,4 +1,4 @@
-# UART_StateMachine_With_Queue_FPGA
+# UART Communication with FPGA
 
 Hi this a general UART communication state machine written in vhdl.
 To use this just instantiate the UART.vhd Component and configure ports. Thats it.
